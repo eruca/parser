@@ -2,7 +2,6 @@ package parser
 
 import (
 	"errors"
-	"log"
 	"regexp"
 )
 
@@ -20,6 +19,21 @@ const (
 	_EMPTYSPACE
 	_RAW
 )
+
+func (t Type) String() string {
+	switch t {
+	case _OPEN_PAREN:
+		return "("
+	case _CLOSE_PAREN:
+		return ")"
+	case _OPEN_BRACK:
+		return "["
+	case _CLOSE_BRACK:
+		return "]"
+	}
+
+	return ""
+}
 
 var (
 	re_empty_space = regexp.MustCompile(`\s`)
@@ -57,25 +71,81 @@ func (t *Token) peek(n int) (rune, error) {
 	return t.query[pos], nil
 }
 
-type Pair struct {
+type TokenItem struct {
 	t     Type
-	scope int
 	value string
 }
 
-func Tokenizer(query string) *Pairs {
+type TokenItems struct {
+	items   []*TokenItem
+	current int
+}
+
+func NewTokenItems(items []*TokenItem) *TokenItems {
+	return &TokenItems{items: items, current: -1}
+}
+
+func (tis *TokenItems) hasNext() bool {
+	if tmp := tis.current + 1; tmp < len(tis.items) {
+		return true
+	}
+	return false
+}
+
+func (tis *TokenItems) next() *TokenItem {
+	tis.current++
+	return tis.items[tis.current]
+}
+
+func (tis *TokenItems) peek(n int) (*TokenItem, error) {
+	if tmp := tis.current + n; tmp >= 0 && tmp < len(tis.items) {
+		return tis.items[tmp], nil
+	}
+
+	return nil, ErrInval
+}
+
+func (tis TokenItems) TopAndOr() (item *TokenItem, pos int) {
+	pos = -1
+	paren := 0
+
+	for tis.hasNext() {
+		item = tis.next()
+
+		switch item.t {
+		case _OPEN_PAREN:
+			paren++
+		case _CLOSE_PAREN:
+			paren--
+		case _AND:
+			if paren == 0 {
+				pos = tis.current
+			}
+		case _OR:
+			if paren == 0 {
+				pos = tis.current
+			}
+		}
+	}
+
+	if pos == -1 {
+		return nil, -1
+	}
+
+	return tis.items[pos], pos
+}
+
+func Tokenizer(query string) *TokenItems {
 	tokens := &Token{
 		query:   []rune(query),
 		current: -1,
 	}
 
-	pairs := []*Pair{}
-	forSort := []*Pair{}
+	items := []*TokenItem{}
 
 	var char rune
 	for tokens.hasNext() {
 		char = tokens.next()
-		log.Println(string(char))
 
 		value := []rune{}
 		if re_empty_space.MatchString(string(char)) {
@@ -94,7 +164,7 @@ func Tokenizer(query string) *Pairs {
 			}
 		}
 		if len(value) > 0 {
-			pairs = append(pairs, &Pair{t: _EMPTYSPACE, scope: tokens.scope, value: string(value)})
+			// items = append(items, &TokenItem{t: _EMPTYSPACE, value: string(value)})
 			continue
 		}
 
@@ -113,44 +183,36 @@ func Tokenizer(query string) *Pairs {
 			}
 		}
 		if len(value) > 0 {
-			pairs = append(pairs, &Pair{t: _NUMBER, scope: tokens.scope, value: string(value)})
+			items = append(items, &TokenItem{t: _NUMBER, value: string(value)})
 			continue
 		}
 
 		switch char {
 		case '(':
-			pairs = append(pairs, &Pair{t: _OPEN_PAREN, scope: tokens.scope})
-			tokens.scope++
+			items = append(items, &TokenItem{t: _OPEN_PAREN})
 		case ')':
-			tokens.scope--
-			pairs = append(pairs, &Pair{t: _CLOSE_PAREN, scope: tokens.scope})
+			items = append(items, &TokenItem{t: _CLOSE_PAREN})
 		case '[':
-			pairs = append(pairs, &Pair{t: _OPEN_BRACK, scope: tokens.scope})
+			items = append(items, &TokenItem{t: _OPEN_BRACK})
 		case ']':
-			pairs = append(pairs, &Pair{t: _CLOSE_BRACK, scope: tokens.scope})
+			items = append(items, &TokenItem{t: _CLOSE_BRACK})
 		case '|':
 			if r, err := tokens.peek(1); err == nil {
 				if r == '|' {
-					pair := &Pair{t: _OR, scope: tokens.scope}
-					pairs = append(pairs, pair)
-					forSort = append(forSort, pair)
-
+					items = append(items, &TokenItem{t: _OR})
 					tokens.next()
 				} else {
-					pairs = append(pairs, &Pair{t: _RAW, scope: tokens.scope, value: string(char)})
+					items = append(items, &TokenItem{t: _RAW, value: string(char)})
 				}
 			}
 
 		case '&':
 			if r, err := tokens.peek(1); err == nil {
 				if r == '&' {
-					pair := &Pair{t: _AND, scope: tokens.scope}
-					pairs = append(pairs, pair)
-					forSort = append(forSort, pair)
-
+					items = append(items, &TokenItem{t: _AND})
 					tokens.next()
 				} else {
-					pairs = append(pairs, &Pair{t: _RAW, scope: tokens.scope, value: string(char)})
+					items = append(items, &TokenItem{t: _RAW, value: string(char)})
 				}
 			}
 
@@ -172,12 +234,12 @@ func Tokenizer(query string) *Pairs {
 				}
 			}
 
-			pairs = append(pairs, &Pair{t: _TEXT, scope: tokens.scope, value: string(value)})
+			items = append(items, &TokenItem{t: _TEXT, value: string(value)})
 
 		default:
-			pairs = append(pairs, &Pair{t: _RAW, scope: tokens.scope, value: string(char)})
+			items = append(items, &TokenItem{t: _RAW, value: string(char)})
 		}
 	}
 
-	return &Pairs{pairs: pairs, forSort: forSort}
+	return NewTokenItems(items)
 }

@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"log"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,13 +10,32 @@ import (
 func TestTokenizer(t *testing.T) {
 	pairs := Tokenizer("(A || B) && C")
 
-	assert.Equal(t, pairs[0], &Pair{t: _OPEN_PAREN})
-	assert.Equal(t, pairs[1], &Pair{t: _RAW, scope: 1, value: "A"})
-	assert.Equal(t, pairs[2], &Pair{t: _EMPTYSPACE, scope: 1, value: " "})
-	assert.Equal(t, pairs[3], &Pair{t: _OR, scope: 1})
-	assert.Equal(t, pairs[4], &Pair{t: _EMPTYSPACE, scope: 1, value: " "})
-	assert.Equal(t, pairs[5], &Pair{t: _RAW, scope: 1, value: "B"})
-	assert.Equal(t, pairs[6], &Pair{t: _CLOSE_PAREN})
-	assert.Equal(t, pairs[8], &Pair{t: _AND})
-	assert.Equal(t, pairs[10], &Pair{t: _RAW, value: "C"})
+	assert.Equal(t, pairs.items[0], &TokenItem{t: _OPEN_PAREN})
+	assert.Equal(t, pairs.items[1], &TokenItem{t: _RAW, value: "A"})
+	assert.Equal(t, pairs.items[2], &TokenItem{t: _OR})
+	assert.Equal(t, pairs.items[3], &TokenItem{t: _RAW, value: "B"})
+	assert.Equal(t, pairs.items[4], &TokenItem{t: _CLOSE_PAREN})
+	assert.Equal(t, pairs.items[5], &TokenItem{t: _AND})
+	assert.Equal(t, pairs.items[6], &TokenItem{t: _RAW, value: "C"})
+}
+
+func TestParse(t *testing.T) {
+	// tokenItems := Tokenizer("A && B")
+
+	// p := Parse(tokenItems)
+	// assert.Equal(t, p.String(), "A && B")
+
+	tokenItems := Tokenizer("(A (B || C) D) E")
+	p := Parse(tokenItems)
+
+	if ps, ok := p.(Parsers); ok {
+		for k, p1 := range ps {
+			log.Println(k, p1.Len())
+			if k == 0 {
+				log.Println(p1.(Parsers)[1].String())
+			}
+		}
+	} else {
+		log.Panic("not right")
+	}
 }

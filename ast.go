@@ -12,85 +12,85 @@ type Parser interface {
 	Parse() []*QueryItem
 }
 
-type Pairs struct {
-	pairs []*Pair
-	// forSort []*Pair
-	current int
-}
-
-// func (p *Pairs) Len() int {
-// 	return len(p.forSort)
-// }
-
-// func (p *Pairs) Less(i, j int) bool {
-// 	p.forSort[i].scope < p.forSort[j].scope
-// }
-
-// func (p *Pairs) Swap(i, j int) {
-// 	p.forSort[i], p.forSort[j] = p.forSort[j], p.forSort[i]
-// }
-
-func (p *Pairs) hasNext() bool {
-	if tmp := p.current + 1; tmp < len(p.pairs) {
-		return true
+func Parse(tokenItems *TokenItems) Parser {
+	if tokenItems == nil {
+		return nil
 	}
 
-	return false
-}
+	item, pos := tokenItems.TopAndOr()
 
-func (p *Pairs) next() *Pair {
-	p.current++
-	return p.pairs[p.current]
-}
+	log.Println("pos", pos)
+	if pos == -1 {
+		return Simple(tokenItems)
+	}
 
-func (p *Pairs) peek(n int) *Pair {
-	if tmp := p.current + n; tmp >= 0 && tmp < len(p.pairs) {
-		return p.pairs[tmp]
+	if item.t == _AND {
+		return &AND{
+			left:  Parse(NewTokenItems(tokenItems.items[:pos])),
+			right: Parse(NewTokenItems(tokenItems.items[pos+1:])),
+		}
+	} else {
+		log.Println("into _OR")
+		return &OR{
+			left:  Parse(NewTokenItems(tokenItems.items[:pos])),
+			right: Parse(NewTokenItems(tokenItems.items[pos+1:])),
+		}
 	}
 
 	return nil
 }
 
-func Parse(ps []*Pair) Parser {
-	pairs := &Pairs{pairs: ps, current: -1}
+// 没有or and
+func Simple(ts *TokenItems) Parser {
+	ret := Parsers{}
 
-	result := Parsers{}
-	for pairs.hasNext() {
-		pair := pairs.next()
-		log.Println(pair.value)
+	start, end, parens := 0, 0, 0
+	for ts.hasNext() {
+		item := ts.next()
 
-		switch pair.t {
-		case _OR:
-			var left, right *Pair
+		switch item.t {
+		case _OPEN_PAREN:
+			start = ts.current + 1
 
-			peek := -1
-			for left = pairs.peek(peek); left != nil; left = pairs.peek(peek) {
-				switch left.t {
-				case _RAW:
-					result = append(result, &Raw{text: left.value})
-				}
-				peek--
-			}
+		INNER:
+			for ts.hasNext() {
+				next := ts.next()
 
-			peek = 1
-			for right = pairs.peek(peek); right != nil; right = pairs.peek(peek) {
-				switch right.t {
+				switch next.t {
 				case _OPEN_PAREN:
+					parens++
 				case _CLOSE_PAREN:
-				case _RAW:
-					result = append(result, &Raw{text: right.value})
+					if parens == 0 {
+						end = ts.current
+
+						log.Println("start:", start, "end:", end)
+						parser := Parse(NewTokenItems(ts.items[start:end]))
+						if parser != nil {
+							ret = append(ret, parser)
+						}
+						break INNER
+
+					} else {
+						parens--
+					}
 				}
-				peek++
 			}
 
-		case _AND:
+		case _CLOSE_PAREN:
+			panic("never happen")
+		case _RAW:
+			log.Println("into raw", item.value)
+			ret = append(ret, &Raw{text: item.value})
+		case _TEXT:
+			ret = append(ret, &Text{text: item.value})
+		default:
 		}
-
 	}
 
-	return result
+	return ret
 }
 
+// 集合
 type Parsers []Parser
 
 func (p Parsers) Len() int {
@@ -121,6 +121,18 @@ func (p Parsers) Parse() []*QueryItem {
 type AND struct {
 	left  Parser
 	right Parser
+}
+
+func (and *AND) Len() int {
+	return 2
+}
+
+func (and *AND) Parse() []*QueryItem {
+	result := make([]*QueryItem, 0, 2)
+	result = append(result, and.left.Parse()...)
+	result = append(result, and.right.Parse()...)
+
+	return result
 }
 
 func (and *AND) String() string {
