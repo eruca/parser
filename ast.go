@@ -9,7 +9,7 @@ import (
 type Parser interface {
 	Len() int
 	String() string
-	Parse() []*QueryItem
+	Parse(Groups)
 }
 
 func Parse(tokenItems *TokenItems) Parser {
@@ -25,6 +25,7 @@ func Parse(tokenItems *TokenItems) Parser {
 	}
 
 	if item.t == _AND {
+		log.Println("into _And")
 		return &AND{
 			left:  Parse(NewTokenItems(tokenItems.items[:pos])),
 			right: Parse(NewTokenItems(tokenItems.items[pos+1:])),
@@ -34,6 +35,7 @@ func Parse(tokenItems *TokenItems) Parser {
 		return &OR{
 			left:  Parse(NewTokenItems(tokenItems.items[:pos])),
 			right: Parse(NewTokenItems(tokenItems.items[pos+1:])),
+			index: item.index,
 		}
 	}
 
@@ -107,14 +109,7 @@ func (p Parsers) String() string {
 	return strings.Join(result, " ")
 }
 
-func (p Parsers) Parse() []*QueryItem {
-	res := []*QueryItem{}
-
-	for _, parser := range p {
-		res = append(res, parser.Parse()...)
-	}
-
-	return res
+func (ps Parsers) Parse(group Groups) {
 }
 
 // 代表 左右两个都必须有
@@ -127,12 +122,8 @@ func (and *AND) Len() int {
 	return 2
 }
 
-func (and *AND) Parse() []*QueryItem {
-	result := make([]*QueryItem, 0, 2)
-	result = append(result, and.left.Parse()...)
-	result = append(result, and.right.Parse()...)
+func (and *AND) Parse(groups Groups) {
 
-	return result
 }
 
 func (and *AND) String() string {
@@ -143,6 +134,7 @@ func (and *AND) String() string {
 type OR struct {
 	left  Parser
 	right Parser
+	index int
 }
 
 func (or *OR) Len() int {
@@ -153,12 +145,8 @@ func (or *OR) String() string {
 	return fmt.Sprintf("%s || %s", or.left, or.right)
 }
 
-func (or *OR) Parse() []*QueryItem {
-	result := make([]*QueryItem, 0, 2)
-	result = append(result, or.left.Parse()...)
-	result = append(result, or.right.Parse()...)
+func (or *OR) Parse(groups Groups) {
 
-	return result
 }
 
 // Text 代表以""包饶的
@@ -174,8 +162,9 @@ func (t *Text) String() string {
 	return t.text
 }
 
-func (t *Text) Parse() []*QueryItem {
-	return []*QueryItem{&QueryItem{Text: t.text, Offset: []int{}}}
+func (t *Text) Parse(group Groups) {
+	// return Groups{&Group{items: []*QueryItem{
+	// 	&QueryItem{Text: t.text, Offset: true}}}}
 }
 
 // Raw 代表 毫无修饰的词项
@@ -191,6 +180,9 @@ func (r *Raw) String() string {
 	return r.text
 }
 
-func (r *Raw) Parse() []*QueryItem {
-	return []*QueryItem{&QueryItem{Text: r.text}}
+func (r *Raw) Parse(groups Groups) {
+	// return Groups{&Group{items: []*QueryItem{&QueryItem{Text: r.text}}}}
+	for _, group := range groups {
+		group.items = append(group.items, &QueryItem{Text: r.text})
+	}
 }

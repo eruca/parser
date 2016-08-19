@@ -46,7 +46,6 @@ var (
 
 type Token struct {
 	query   []rune
-	scope   int
 	current int
 }
 
@@ -74,6 +73,7 @@ func (t *Token) peek(n int) (rune, error) {
 type TokenItem struct {
 	t     Type
 	value string
+	index int
 }
 
 type TokenItems struct {
@@ -135,13 +135,14 @@ func (tis TokenItems) TopAndOr() (item *TokenItem, pos int) {
 	return tis.items[pos], pos
 }
 
-func Tokenizer(query string) *TokenItems {
+func Tokenizer(query string) (*TokenItems, int) {
 	tokens := &Token{
 		query:   []rune(query),
 		current: -1,
 	}
 
 	items := []*TokenItem{}
+	cntOr := 0
 
 	var char rune
 	for tokens.hasNext() {
@@ -199,7 +200,9 @@ func Tokenizer(query string) *TokenItems {
 		case '|':
 			if r, err := tokens.peek(1); err == nil {
 				if r == '|' {
-					items = append(items, &TokenItem{t: _OR})
+					items = append(items, &TokenItem{t: _OR, index: cntOr})
+					cntOr++
+
 					tokens.next()
 				} else {
 					items = append(items, &TokenItem{t: _RAW, value: string(char)})
@@ -241,5 +244,5 @@ func Tokenizer(query string) *TokenItems {
 		}
 	}
 
-	return NewTokenItems(items)
+	return NewTokenItems(items), cntOr
 }
