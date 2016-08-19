@@ -12,10 +12,14 @@ const (
 	_CLOSE_PAREN             // )
 	_OPEN_BRACK              // [
 	_CLOSE_BRACK             // ]
+	_OPEN_BRACE              // {
+	_CLOSE_BRACE             // }
 	_OR                      // ||
 	_AND                     // &&
 	_TEXT                    // "
 	_NUMBER                  // 0,1,2
+	_COLON                   // :
+	_SLASH                   // \
 	_EMPTYSPACE
 	_RAW
 )
@@ -38,10 +42,12 @@ func (t Type) String() string {
 var (
 	re_empty_space = regexp.MustCompile(`\s`)
 	re_number      = regexp.MustCompile(`\d`)
+	re_keyword     = regexp.MustCompile(`[\s\d\(\)\[\]\|\+\{\}\-\\:&]`)
 )
 
 var (
-	ErrInval = errors.New("invalid")
+	ErrInval              = errors.New("invalid")
+	ErrNoMatchDoubleQuota = errors.New("the \" has no match one")
 )
 
 type Token struct {
@@ -135,7 +141,7 @@ func (tis TokenItems) TopAndOr() (item *TokenItem, pos int) {
 	return tis.items[pos], pos
 }
 
-func Tokenizer(query string) (*TokenItems, int) {
+func Tokenizer(query string) (*TokenItems, int, error) {
 	tokens := &Token{
 		query:   []rune(query),
 		current: -1,
@@ -197,6 +203,12 @@ func Tokenizer(query string) (*TokenItems, int) {
 			items = append(items, &TokenItem{t: _OPEN_BRACK})
 		case ']':
 			items = append(items, &TokenItem{t: _CLOSE_BRACK})
+		case '{':
+			items = append(items, &TokenItem{t: _OPEN_BRACE})
+		case '}':
+			items = append(items, &TokenItem{t: _CLOSE_BRACE})
+		case ':':
+			items = append(items, &TokenItem{t: _COLON})
 		case '|':
 			if r, err := tokens.peek(1); err == nil {
 				if r == '|' {
@@ -221,6 +233,8 @@ func Tokenizer(query string) (*TokenItems, int) {
 
 		case '"':
 			var r rune
+			hasMatchOne := false
+
 			for tokens.hasNext() {
 				r, _ = tokens.peek(1)
 
@@ -229,6 +243,7 @@ func Tokenizer(query string) (*TokenItems, int) {
 						value = append(value, '"')
 						tokens.next()
 					} else {
+						hasMatchOne = true
 						break
 					}
 				} else {
@@ -236,13 +251,36 @@ func Tokenizer(query string) (*TokenItems, int) {
 					tokens.next()
 				}
 			}
+			if !hasMatchOne {
+				return nil, 0, ErrNoMatchDoubleQuota
+			}
 
 			items = append(items, &TokenItem{t: _TEXT, value: string(value)})
+		case '\\':
+			value = append(value, char)
+
+			var r rune
+			if tokens.hasNext() {
+				value = append(value, tokens.next())
+			}
+
+			for tokens.hasNext() {
+				r, _ = tokens.peek(1)
+
+				if !re_keyword.MatchString(string(r)) {
+					value = append(value, r)
+					tokens.next()
+				} else {
+					break
+				}
+			}
+
+			items = append(items, &TokenItem{t: _RAW, value: string(value)})
 
 		default:
 			items = append(items, &TokenItem{t: _RAW, value: string(char)})
 		}
 	}
 
-	return NewTokenItems(items), cntOr
+	return NewTokenItems(items), cntOr, nil
 }

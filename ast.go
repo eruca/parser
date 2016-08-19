@@ -9,7 +9,7 @@ import (
 type Parser interface {
 	Len() int
 	String() string
-	Parse(Groups)
+	Parse(groups Groups)
 }
 
 func Parse(tokenItems *TokenItems) Parser {
@@ -109,7 +109,10 @@ func (p Parsers) String() string {
 	return strings.Join(result, " ")
 }
 
-func (ps Parsers) Parse(group Groups) {
+func (ps Parsers) Parse(groups Groups) {
+	for _, p := range ps {
+		p.Parse(groups)
+	}
 }
 
 // 代表 左右两个都必须有
@@ -122,12 +125,13 @@ func (and *AND) Len() int {
 	return 2
 }
 
-func (and *AND) Parse(groups Groups) {
-
-}
-
 func (and *AND) String() string {
 	return fmt.Sprintf("%s && %s", and.left, and.right)
+}
+
+func (and *AND) Parse(groups Groups) {
+	and.left.Parse(groups)
+	and.right.Parse(groups)
 }
 
 // 代表 或者
@@ -146,7 +150,12 @@ func (or *OR) String() string {
 }
 
 func (or *OR) Parse(groups Groups) {
+	index := or.index + 1
 
+	leftGroup := groups[:index]
+	rightGroup := groups[index:]
+	or.left.Parse(leftGroup)
+	or.right.Parse(rightGroup)
 }
 
 // Text 代表以""包饶的
@@ -162,9 +171,10 @@ func (t *Text) String() string {
 	return t.text
 }
 
-func (t *Text) Parse(group Groups) {
-	// return Groups{&Group{items: []*QueryItem{
-	// 	&QueryItem{Text: t.text, Offset: true}}}}
+func (t *Text) Parse(groups Groups) {
+	for _, group := range groups {
+		group.items = append(group.items, &QueryItem{Text: t.text, Offset: true})
+	}
 }
 
 // Raw 代表 毫无修饰的词项
@@ -181,7 +191,6 @@ func (r *Raw) String() string {
 }
 
 func (r *Raw) Parse(groups Groups) {
-	// return Groups{&Group{items: []*QueryItem{&QueryItem{Text: r.text}}}}
 	for _, group := range groups {
 		group.items = append(group.items, &QueryItem{Text: r.text})
 	}
