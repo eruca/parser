@@ -176,24 +176,32 @@ func (a *Attribute) String() string {
 	return fmt.Sprintf("%s : %s", a.left, a.right)
 }
 
-func (a *Attribute) Parse(groups Groups) {
-	var items []*QueryItem
-	if ps, ok := a.right.(Parsers); ok {
-		items = make([]*QueryItem, 0, len(ps))
+func recur_split(parser Parser) Parsers {
+	res := Parsers{}
 
-		for i := 0; i < len(ps); i++ {
-			if ps[i].Len() > 0 {
-				items = append(items, &QueryItem{
-					Attribute: a.left.String(),
-					Text:      ps[i].String(),
-				})
-			}
+	if ps, ok := parser.(Parsers); ok {
+		for _, p := range ps {
+			ps_child := recur_split(p)
+			res = append(res, ps_child...)
 		}
 	} else {
-		items = []*QueryItem{&QueryItem{
-			Attribute: a.left.String(),
-			Text:      a.right.String(),
-		}}
+		res = append(res, parser)
+	}
+
+	return res
+}
+
+func (a *Attribute) Parse(groups Groups) {
+	ps := recur_split(a.right)
+	items := make([]*QueryItem, 0, len(ps))
+
+	for i := 0; i < len(ps); i++ {
+		if ps[i].Len() > 0 {
+			items = append(items, &QueryItem{
+				Attribute: a.left.String(),
+				Text:      ps[i].String(),
+			})
+		}
 	}
 
 	for _, group := range groups {

@@ -27,7 +27,7 @@ func TestTokenizer(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
-	text := "A && (B || C) D:(E F) \"GHI\""
+	text := "A && (B || C) D:((E F) \"GHI\")"
 	log.Println("text:", text)
 	tokenItems, cntOr, err := Tokenizer(text)
 	assert.NoError(t, err)
