@@ -3,9 +3,9 @@ package parser
 type QueryType int
 
 const (
-	MUST QueryType = iota
+	MUSTNOT QueryType = iota - 1
 	SHOULD
-	MUSTNOT
+	MUST
 )
 
 type QueryItem struct {

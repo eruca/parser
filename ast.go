@@ -3,7 +3,6 @@ package parser
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -192,6 +191,29 @@ func Simple(ts *TokenItems) (Parser, error) {
 			}
 			ret = append(ret, &Text{text: item.value})
 
+		case _PLUS:
+			for ts.hasNext() {
+				next := ts.next()
+
+				switch next.t {
+				case _RAW:
+					ret = append(ret, &Raw{qt: MUST, text: next.value})
+				case _TEXT:
+					ret = append(ret, &Text{qt: MUST, text: next.value})
+				}
+			}
+		case _SUB:
+			for ts.hasNext() {
+				next := ts.next()
+
+				switch next.t {
+				case _RAW:
+					ret = append(ret, &Raw{qt: MUSTNOT, text: next.value})
+				case _TEXT:
+					ret = append(ret, &Text{qt: MUSTNOT, text: next.value})
+				}
+			}
+
 		case _EMPTYSPACE:
 			ret = append(ret, Sep(0))
 		default:
@@ -218,12 +240,6 @@ func (p Parsers) String() string {
 	return strings.Join(result, " ")
 }
 
-// func (ps Parsers) Parse(groups Groups) {
-// 	for _, p := range ps {
-// 		p.Parse(groups)
-// 	}
-// }
-
 func (ps Parsers) Parse() Groups {
 	groups := make([]Groups, 0, len(ps))
 	for _, p := range ps {
@@ -237,11 +253,9 @@ func (ps Parsers) Parse() Groups {
 
 	cnt := 1
 	for _, gs := range groups {
-		log.Println("gs:", len(gs))
 		cnt *= len(gs)
 	}
 
-	log.Println("len(cnt):", cnt)
 	ret := make(Groups, cnt)
 
 	for i := 0; i < cnt; i++ {
@@ -271,25 +285,6 @@ func (a *Attribute) String() string {
 	return fmt.Sprintf("%s : %s", a.left, a.right)
 }
 
-// func (a *Attribute) Parse(groups Groups) {
-// 	ps := recur_split(a.right)
-// 	items := make([]*QueryItem, 0, len(ps))
-
-// 	for i := 0; i < len(ps); i++ {
-// 		if ps[i].Len() > 0 {
-// 			items = append(items, &QueryItem{
-// 				Attribute: a.left.String(),
-// 				Text:      ps[i].String(),
-// 			})
-// 		}
-// 	}
-
-// 	for _, group := range groups {
-// 		for _, item := range items {
-// 			group.items = append(group.items, item)
-// 		}
-// 	}
-// }
 func (a *Attribute) Parse() Groups {
 	groups := a.right.Parse()
 
@@ -316,10 +311,6 @@ func (and *AND) String() string {
 	return fmt.Sprintf("%s && %s", and.left, and.right)
 }
 
-// func (and *AND) Parse(groups Groups) {
-// 	and.left.Parse(groups)
-// 	and.right.Parse(groups)
-// }
 func (and *AND) Parse() Groups {
 	ps := Parsers{and.left, and.right}
 
@@ -341,19 +332,9 @@ func (or *OR) String() string {
 	return fmt.Sprintf("%s || %s", or.left, or.right)
 }
 
-// func (or *OR) Parse(groups Groups) {
-// 	index := or.index + 1
-// 	log.Println("index:", index)
-// 	leftGroup := groups[:index]
-// 	rightGroup := groups[index:]
-// 	or.left.Parse(leftGroup)
-// 	or.right.Parse(rightGroup)
-// }
 func (or *OR) Parse() Groups {
 	leftGroup := or.left.Parse()
 	rightGroup := or.right.Parse()
-
-	log.Println("len", len(leftGroup), len(rightGroup))
 
 	ret := make(Groups, len(leftGroup)+len(rightGroup))
 
@@ -364,6 +345,7 @@ func (or *OR) Parse() Groups {
 
 // Text 代表以""包饶的
 type Text struct {
+	qt   QueryType
 	text string
 }
 
@@ -376,11 +358,7 @@ func (t *Text) String() string {
 }
 
 func (t *Text) Parse() Groups {
-	// func (t *Text) Parse(groups Groups) {
-	// 	for _, group := range groups {
-	// 		group.items = append(group.items, &QueryItem{Text: t.text, Offset: true})
-	// 	}
-	return Groups{&Group{items: []*QueryItem{&QueryItem{Text: t.text, Offset: true}}}}
+	return Groups{&Group{items: []*QueryItem{&QueryItem{QT: t.qt, Text: t.text, Offset: true}}}}
 }
 
 type Sep int8
@@ -397,6 +375,7 @@ func (s Sep) Parse() Groups { return nil }
 
 // Raw 代表 毫无修饰的词项
 type Raw struct {
+	qt   QueryType
 	text string
 }
 
@@ -409,8 +388,5 @@ func (r *Raw) String() string {
 }
 
 func (r *Raw) Parse() Groups {
-	// for _, group := range groups {
-	// 	group.items = append(group.items, &QueryItem{Text: r.text})
-	// }
-	return Groups{&Group{items: []*QueryItem{&QueryItem{Text: r.text}}}}
+	return Groups{&Group{items: []*QueryItem{&QueryItem{QT: r.qt, Text: r.text}}}}
 }

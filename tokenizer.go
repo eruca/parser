@@ -20,6 +20,8 @@ const (
 	_NUMBER                  // 0,1,2
 	_COLON                   // :
 	_SLASH                   // \
+	_PLUS
+	_SUB
 	_EMPTYSPACE
 	_RAW
 )
@@ -207,6 +209,10 @@ func Tokenizer(query string) (*TokenItems, error) {
 			items = append(items, &TokenItem{t: _OPEN_BRACE})
 		case '}':
 			items = append(items, &TokenItem{t: _CLOSE_BRACE})
+		case '+':
+			items = append(items, &TokenItem{t: _PLUS})
+		case '-':
+			items = append(items, &TokenItem{t: _SUB})
 		case ':':
 			items = append(items, &TokenItem{t: _COLON})
 		case '|':
