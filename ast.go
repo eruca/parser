@@ -179,12 +179,14 @@ func (a *Attribute) String() string {
 func (a *Attribute) Parse(groups Groups) {
 	var items []*QueryItem
 	if ps, ok := a.right.(Parsers); ok {
-		items = make([]*QueryItem, len(ps))
+		items = make([]*QueryItem, 0, len(ps))
 
 		for i := 0; i < len(ps); i++ {
-			items[i] = &QueryItem{
-				Attribute: a.left.String(),
-				Text:      ps[i].String(),
+			if ps[i].Len() > 0 {
+				items = append(items, &QueryItem{
+					Attribute: a.left.String(),
+					Text:      ps[i].String(),
+				})
 			}
 		}
 	} else {
