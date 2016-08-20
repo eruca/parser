@@ -291,7 +291,15 @@ func (a *Attribute) String() string {
 // 	}
 // }
 func (a *Attribute) Parse() Groups {
-	return nil
+	groups := a.right.Parse()
+
+	for _, group := range groups {
+		for _, item := range group.items {
+			item.Attribute = a.left.String()
+		}
+	}
+
+	return groups
 }
 
 // 代表 左右两个都必须有
@@ -404,6 +412,5 @@ func (r *Raw) Parse() Groups {
 	// for _, group := range groups {
 	// 	group.items = append(group.items, &QueryItem{Text: r.text})
 	// }
-	log.Println("into RAW")
 	return Groups{&Group{items: []*QueryItem{&QueryItem{Text: r.text}}}}
 }
