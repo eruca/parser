@@ -27,7 +27,7 @@ func TestTokenizer(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
-	text := "(A || B || E) && (C || D) && (F || G)"
+	text := "(A || B || C) (D && E) F"
 	log.Println("text:", text)
 	tokenItems, err := Tokenizer(text)
 	assert.NoError(t, err)
@@ -35,14 +35,16 @@ func TestParse(t *testing.T) {
 	p, err := Parse(tokenItems)
 	assert.NoError(t, err)
 
-	assert.Equal(t, recur_count_or(p), 12)
+	// assert.Equal(t, recur_count_or(p), 6)
 
 	groups := make(Groups, recur_count_or(p))
 
 	for i := 0; i < len(groups); i++ {
 		groups[i] = &Group{}
 	}
-	p.Parse(groups)
+	groups = p.Parse()
+
+	log.Println("len(groups):", len(groups))
 
 	for i := 0; i < len(groups); i++ {
 		log.Println("group:", i)

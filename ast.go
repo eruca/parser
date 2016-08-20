@@ -10,7 +10,7 @@ import (
 type Parser interface {
 	Len() int
 	String() string
-	Parse(groups Groups)
+	Parse() Groups
 }
 
 func recur_split(parser Parser) Parsers {
@@ -82,13 +82,13 @@ func Parse(tokenItems *TokenItems) (Parser, error) {
 
 	item, pos := tokenItems.TopAndOr()
 
-	log.Println("pos", pos)
+	// log.Println("pos", pos)
 	if pos == -1 {
 		return Simple(tokenItems)
 	}
 
 	if item.t == _AND {
-		log.Println("into _And")
+		// log.Println("into _And")
 		left, err := Parse(NewTokenItems(tokenItems.items[:pos]))
 		if err != nil {
 			return nil, err
@@ -99,7 +99,7 @@ func Parse(tokenItems *TokenItems) (Parser, error) {
 		}
 		return &AND{left: left, right: right}, nil
 	} else {
-		log.Println("into _OR")
+		// log.Println("into _OR")
 		left, err := Parse(NewTokenItems(tokenItems.items[:pos]))
 		if err != nil {
 			return nil, err
@@ -137,7 +137,7 @@ func Simple(ts *TokenItems) (Parser, error) {
 					parens++
 				case _CLOSE_PAREN:
 					if parens == 0 {
-						log.Println("start:", start, "end:", ts.current)
+						// log.Println("start:", start, "end:", ts.current)
 						parser, err = Parse(NewTokenItems(ts.items[start:ts.current]))
 						if err != nil {
 							return nil, err
@@ -170,7 +170,7 @@ func Simple(ts *TokenItems) (Parser, error) {
 		case _CLOSE_PAREN:
 			panic("never happen")
 		case _RAW:
-			log.Println("into raw", item.value)
+			// log.Println("into raw", item.value)
 			// ret = append(ret, &Raw{text: item.value})
 			if len(ret) > 0 {
 				last := ret[len(ret)-1]
@@ -182,7 +182,7 @@ func Simple(ts *TokenItems) (Parser, error) {
 			ret = append(ret, &Raw{text: item.value})
 
 		case _TEXT:
-			log.Println("into text", item.value)
+			// log.Println("into text", item.value)
 			if len(ret) > 0 {
 				last := ret[len(ret)-1]
 				if attr, ok := last.(*Attribute); ok {
@@ -218,10 +218,43 @@ func (p Parsers) String() string {
 	return strings.Join(result, " ")
 }
 
-func (ps Parsers) Parse(groups Groups) {
+// func (ps Parsers) Parse(groups Groups) {
+// 	for _, p := range ps {
+// 		p.Parse(groups)
+// 	}
+// }
+
+func (ps Parsers) Parse() Groups {
+	groups := make([]Groups, 0, len(ps))
 	for _, p := range ps {
-		p.Parse(groups)
+		if p.Len() > 0 {
+			groups = append(groups, p.Parse())
+		}
 	}
+	if len(groups) == 1 {
+		return groups[0]
+	}
+
+	cnt := 1
+	for _, gs := range groups {
+		log.Println("gs:", len(gs))
+		cnt *= len(gs)
+	}
+
+	log.Println("len(cnt):", cnt)
+	ret := make(Groups, cnt)
+
+	for i := 0; i < cnt; i++ {
+		ret[i] = &Group{}
+	}
+
+	for _, gs := range groups {
+		for i := 0; i < cnt; i++ {
+			index := i % len(gs)
+			ret[i].items = append(ret[i].items, gs[index].items...)
+		}
+	}
+	return ret
 }
 
 // 属性
@@ -238,24 +271,27 @@ func (a *Attribute) String() string {
 	return fmt.Sprintf("%s : %s", a.left, a.right)
 }
 
-func (a *Attribute) Parse(groups Groups) {
-	ps := recur_split(a.right)
-	items := make([]*QueryItem, 0, len(ps))
+// func (a *Attribute) Parse(groups Groups) {
+// 	ps := recur_split(a.right)
+// 	items := make([]*QueryItem, 0, len(ps))
 
-	for i := 0; i < len(ps); i++ {
-		if ps[i].Len() > 0 {
-			items = append(items, &QueryItem{
-				Attribute: a.left.String(),
-				Text:      ps[i].String(),
-			})
-		}
-	}
+// 	for i := 0; i < len(ps); i++ {
+// 		if ps[i].Len() > 0 {
+// 			items = append(items, &QueryItem{
+// 				Attribute: a.left.String(),
+// 				Text:      ps[i].String(),
+// 			})
+// 		}
+// 	}
 
-	for _, group := range groups {
-		for _, item := range items {
-			group.items = append(group.items, item)
-		}
-	}
+// 	for _, group := range groups {
+// 		for _, item := range items {
+// 			group.items = append(group.items, item)
+// 		}
+// 	}
+// }
+func (a *Attribute) Parse() Groups {
+	return nil
 }
 
 // 代表 左右两个都必须有
@@ -272,9 +308,14 @@ func (and *AND) String() string {
 	return fmt.Sprintf("%s && %s", and.left, and.right)
 }
 
-func (and *AND) Parse(groups Groups) {
-	and.left.Parse(groups)
-	and.right.Parse(groups)
+// func (and *AND) Parse(groups Groups) {
+// 	and.left.Parse(groups)
+// 	and.right.Parse(groups)
+// }
+func (and *AND) Parse() Groups {
+	ps := Parsers{and.left, and.right}
+
+	return ps.Parse()
 }
 
 // 代表 或者
@@ -292,13 +333,25 @@ func (or *OR) String() string {
 	return fmt.Sprintf("%s || %s", or.left, or.right)
 }
 
-func (or *OR) Parse(groups Groups) {
-	index := or.index + 1
-	log.Println("index:", index)
-	leftGroup := groups[:index]
-	rightGroup := groups[index:]
-	or.left.Parse(leftGroup)
-	or.right.Parse(rightGroup)
+// func (or *OR) Parse(groups Groups) {
+// 	index := or.index + 1
+// 	log.Println("index:", index)
+// 	leftGroup := groups[:index]
+// 	rightGroup := groups[index:]
+// 	or.left.Parse(leftGroup)
+// 	or.right.Parse(rightGroup)
+// }
+func (or *OR) Parse() Groups {
+	leftGroup := or.left.Parse()
+	rightGroup := or.right.Parse()
+
+	log.Println("len", len(leftGroup), len(rightGroup))
+
+	ret := make(Groups, len(leftGroup)+len(rightGroup))
+
+	copy(ret, leftGroup)
+	copy(ret[len(leftGroup):], rightGroup)
+	return ret
 }
 
 // Text 代表以""包饶的
@@ -314,10 +367,12 @@ func (t *Text) String() string {
 	return t.text
 }
 
-func (t *Text) Parse(groups Groups) {
-	for _, group := range groups {
-		group.items = append(group.items, &QueryItem{Text: t.text, Offset: true})
-	}
+func (t *Text) Parse() Groups {
+	// func (t *Text) Parse(groups Groups) {
+	// 	for _, group := range groups {
+	// 		group.items = append(group.items, &QueryItem{Text: t.text, Offset: true})
+	// 	}
+	return Groups{&Group{items: []*QueryItem{&QueryItem{Text: t.text, Offset: true}}}}
 }
 
 type Sep int8
@@ -330,7 +385,7 @@ func (s Sep) String() string {
 	return " "
 }
 
-func (s Sep) Parse(Groups) {}
+func (s Sep) Parse() Groups { return nil }
 
 // Raw 代表 毫无修饰的词项
 type Raw struct {
@@ -345,8 +400,10 @@ func (r *Raw) String() string {
 	return r.text
 }
 
-func (r *Raw) Parse(groups Groups) {
-	for _, group := range groups {
-		group.items = append(group.items, &QueryItem{Text: r.text})
-	}
+func (r *Raw) Parse() Groups {
+	// for _, group := range groups {
+	// 	group.items = append(group.items, &QueryItem{Text: r.text})
+	// }
+	log.Println("into RAW")
+	return Groups{&Group{items: []*QueryItem{&QueryItem{Text: r.text}}}}
 }
