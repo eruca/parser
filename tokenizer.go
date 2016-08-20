@@ -171,7 +171,7 @@ func Tokenizer(query string) (*TokenItems, int, error) {
 			}
 		}
 		if len(value) > 0 {
-			// items = append(items, &TokenItem{t: _EMPTYSPACE, value: string(value)})
+			items = append(items, &TokenItem{t: _EMPTYSPACE, value: string(value)})
 			continue
 		}
 
@@ -244,6 +244,7 @@ func Tokenizer(query string) (*TokenItems, int, error) {
 						tokens.next()
 					} else {
 						hasMatchOne = true
+						tokens.next()
 						break
 					}
 				} else {
@@ -254,8 +255,8 @@ func Tokenizer(query string) (*TokenItems, int, error) {
 			if !hasMatchOne {
 				return nil, 0, ErrNoMatchDoubleQuota
 			}
-
 			items = append(items, &TokenItem{t: _TEXT, value: string(value)})
+
 		case '\\':
 			value = append(value, char)
 

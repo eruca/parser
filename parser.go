@@ -9,9 +9,10 @@ const (
 )
 
 type QueryItem struct {
-	QT     QueryType
-	Text   string
-	Offset bool
+	QT        QueryType
+	Attribute string // 属性值
+	Text      string
+	Offset    bool
 }
 
 type Group struct {
