@@ -141,7 +141,7 @@ func (tis TokenItems) TopAndOr() (item *TokenItem, pos int) {
 	return tis.items[pos], pos
 }
 
-func Tokenizer(query string) (*TokenItems, int, error) {
+func Tokenizer(query string) (*TokenItems, error) {
 	tokens := &Token{
 		query:   []rune(query),
 		current: -1,
@@ -253,7 +253,7 @@ func Tokenizer(query string) (*TokenItems, int, error) {
 				}
 			}
 			if !hasMatchOne {
-				return nil, 0, ErrNoMatchDoubleQuota
+				return nil, ErrNoMatchDoubleQuota
 			}
 			items = append(items, &TokenItem{t: _TEXT, value: string(value)})
 
@@ -283,5 +283,5 @@ func Tokenizer(query string) (*TokenItems, int, error) {
 		}
 	}
 
-	return NewTokenItems(items), cntOr, nil
+	return NewTokenItems(items), nil
 }

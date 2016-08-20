@@ -13,6 +13,68 @@ type Parser interface {
 	Parse(groups Groups)
 }
 
+func recur_split(parser Parser) Parsers {
+	res := Parsers{}
+
+	if ps, ok := parser.(Parsers); ok {
+		for _, p := range ps {
+			ps_child := recur_split(p)
+			res = append(res, ps_child...)
+		}
+	} else {
+		res = append(res, parser)
+	}
+
+	return res
+}
+
+func recur_count_or(parser Parser) int {
+	sum := 1
+	if ps, ok := parser.(Parsers); ok {
+		for _, p := range ps {
+			if p.Len() > 0 {
+				num := recur_count_or(p)
+				if num > 0 {
+					sum *= num
+				}
+			}
+		}
+
+		if sum == 1 {
+			return 0
+		}
+		return sum
+	}
+
+	switch parser.(type) {
+	case *OR:
+		or := parser.(*OR)
+		left := recur_count_or(or.left)
+		right := recur_count_or(or.right)
+
+		if left+right == 0 {
+			return 2
+		}
+
+		return left + right + 1
+	case *AND:
+		and := parser.(*AND)
+		left := recur_count_or(and.left)
+		right := recur_count_or(and.right)
+
+		if left == 0 {
+			return right
+		}
+
+		if right == 0 {
+			return left
+		}
+
+		return left * right
+	}
+	return 0
+}
+
 func Parse(tokenItems *TokenItems) (Parser, error) {
 	if tokenItems == nil {
 		return nil, nil
@@ -176,21 +238,6 @@ func (a *Attribute) String() string {
 	return fmt.Sprintf("%s : %s", a.left, a.right)
 }
 
-func recur_split(parser Parser) Parsers {
-	res := Parsers{}
-
-	if ps, ok := parser.(Parsers); ok {
-		for _, p := range ps {
-			ps_child := recur_split(p)
-			res = append(res, ps_child...)
-		}
-	} else {
-		res = append(res, parser)
-	}
-
-	return res
-}
-
 func (a *Attribute) Parse(groups Groups) {
 	ps := recur_split(a.right)
 	items := make([]*QueryItem, 0, len(ps))
@@ -247,7 +294,7 @@ func (or *OR) String() string {
 
 func (or *OR) Parse(groups Groups) {
 	index := or.index + 1
-
+	log.Println("index:", index)
 	leftGroup := groups[:index]
 	rightGroup := groups[index:]
 	or.left.Parse(leftGroup)

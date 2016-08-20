@@ -8,7 +8,7 @@ import (
 )
 
 func TestTokenizer(t *testing.T) {
-	pairs, _, err := Tokenizer("(A || B) && C \\\"ABC")
+	pairs, err := Tokenizer("(A || B) && C \\\"ABC")
 	assert.NoError(t, err)
 
 	assert.Equal(t, pairs.items[0], &TokenItem{t: _OPEN_PAREN})
@@ -27,15 +27,17 @@ func TestTokenizer(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
-	text := "A && (B || C) D:((E F) \"GHI\")"
+	text := "(A || B || E) && (C || D) && (F || G)"
 	log.Println("text:", text)
-	tokenItems, cntOr, err := Tokenizer(text)
+	tokenItems, err := Tokenizer(text)
 	assert.NoError(t, err)
 
 	p, err := Parse(tokenItems)
 	assert.NoError(t, err)
 
-	groups := make(Groups, cntOr+1)
+	assert.Equal(t, recur_count_or(p), 12)
+
+	groups := make(Groups, recur_count_or(p))
 
 	for i := 0; i < len(groups); i++ {
 		groups[i] = &Group{}
