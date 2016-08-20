@@ -44,7 +44,7 @@ func (t Type) String() string {
 var (
 	re_empty_space = regexp.MustCompile(`\s`)
 	re_number      = regexp.MustCompile(`\d`)
-	re_keyword     = regexp.MustCompile(`[\s\d\(\)\[\]\|\+\{\}\-\\:&]`)
+	re_keyword     = regexp.MustCompile(`[\s\(\)\[\]\|\+\{\}\-\\:&]`)
 )
 
 var (
@@ -177,24 +177,24 @@ func Tokenizer(query string) (*TokenItems, error) {
 			continue
 		}
 
-		if re_number.MatchString(string(char)) {
-			var r rune
-			for tokens.hasNext() {
-				r, _ = tokens.peek(1)
+		// if re_number.MatchString(string(char)) {
+		// 	var r rune
+		// 	for tokens.hasNext() {
+		// 		r, _ = tokens.peek(1)
 
-				if re_number.MatchString(string(r)) {
-					value = append(value, r)
+		// 		if re_number.MatchString(string(r)) {
+		// 			value = append(value, r)
 
-					tokens.next()
-				} else {
-					break
-				}
-			}
-		}
-		if len(value) > 0 {
-			items = append(items, &TokenItem{t: _NUMBER, value: string(value)})
-			continue
-		}
+		// 			tokens.next()
+		// 		} else {
+		// 			break
+		// 		}
+		// 	}
+		// }
+		// if len(value) > 0 {
+		// 	items = append(items, &TokenItem{t: _NUMBER, value: string(value)})
+		// 	continue
+		// }
 
 		switch char {
 		case '(':
@@ -285,7 +285,21 @@ func Tokenizer(query string) (*TokenItems, error) {
 			items = append(items, &TokenItem{t: _RAW, value: string(value)})
 
 		default:
-			items = append(items, &TokenItem{t: _RAW, value: string(char)})
+			value = append(value, char)
+
+			var r rune
+			for tokens.hasNext() {
+				r, _ = tokens.peek(1)
+
+				if !re_keyword.MatchString(string(r)) {
+					value = append(value, r)
+					tokens.next()
+				} else {
+					break
+				}
+			}
+
+			items = append(items, &TokenItem{t: _RAW, value: string(value)})
 		}
 	}
 

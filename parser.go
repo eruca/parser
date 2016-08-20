@@ -12,6 +12,7 @@ type QueryItem struct {
 	QT        QueryType
 	Attribute string // 属性值
 	Text      string
+	IsRange   bool
 	Offset    bool
 }
 

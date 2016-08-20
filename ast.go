@@ -158,6 +158,58 @@ func Simple(ts *TokenItems) (Parser, error) {
 			}
 			ret = append(ret, parser)
 
+		case _OPEN_BRACK:
+			value := "["
+
+		LOOP1:
+			for ts.hasNext() {
+				next := ts.next()
+				if next.t == _EMPTYSPACE {
+					continue
+				}
+
+				if next.t == _CLOSE_BRACK {
+					value += "]"
+					break LOOP1
+				}
+				if next.t == _CLOSE_BRACE {
+					value += "}"
+					break LOOP1
+				}
+
+				value += next.value
+			}
+
+			if attr, ok := ret[len(ret)-1].(*Attribute); ok {
+				attr.right = &Range{text: value}
+			}
+
+		case _OPEN_BRACE:
+			value := "{"
+
+		LOOP2:
+			for ts.hasNext() {
+				next := ts.next()
+				if next.t == _EMPTYSPACE {
+					continue
+				}
+
+				if next.t == _CLOSE_BRACK {
+					value += "]"
+					break LOOP2
+				}
+				if next.t == _CLOSE_BRACE {
+					value += "}"
+					break LOOP2
+				}
+
+				value += next.value
+			}
+
+			if attr, ok := ret[len(ret)-1].(*Attribute); ok {
+				attr.right = &Range{text: value}
+			}
+
 		case _COLON:
 			if len(ret) == 0 {
 				return nil, errors.New("错误语法，不能以:开头")
@@ -216,7 +268,6 @@ func Simple(ts *TokenItems) (Parser, error) {
 
 		case _EMPTYSPACE:
 			ret = append(ret, Sep(0))
-		default:
 		}
 	}
 
@@ -343,6 +394,22 @@ func (or *OR) Parse() Groups {
 	return ret
 }
 
+type Range struct {
+	text string
+}
+
+func (r *Range) Len() int {
+	return 1
+}
+
+func (r *Range) String() string {
+	return r.text
+}
+
+func (r *Range) Parse() Groups {
+	return Groups{&Group{items: []*QueryItem{&QueryItem{QT: MUST, Text: r.text, IsRange: true}}}}
+}
+
 // Text 代表以""包饶的
 type Text struct {
 	qt   QueryType
@@ -361,18 +428,6 @@ func (t *Text) Parse() Groups {
 	return Groups{&Group{items: []*QueryItem{&QueryItem{QT: t.qt, Text: t.text, Offset: true}}}}
 }
 
-type Sep int8
-
-func (s Sep) Len() int {
-	return 0
-}
-
-func (s Sep) String() string {
-	return " "
-}
-
-func (s Sep) Parse() Groups { return nil }
-
 // Raw 代表 毫无修饰的词项
 type Raw struct {
 	qt   QueryType
@@ -390,3 +445,16 @@ func (r *Raw) String() string {
 func (r *Raw) Parse() Groups {
 	return Groups{&Group{items: []*QueryItem{&QueryItem{QT: r.qt, Text: r.text}}}}
 }
+
+// 作为分隔作用
+type Sep int8
+
+func (s Sep) Len() int {
+	return 0
+}
+
+func (s Sep) String() string {
+	return " "
+}
+
+func (s Sep) Parse() Groups { return nil }
