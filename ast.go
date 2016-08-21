@@ -3,7 +3,12 @@ package parser
 import (
 	"errors"
 	"fmt"
+	"log"
 	"strings"
+)
+
+var (
+	ErrQueryTypeConflict = errors.New("查询类型相冲突")
 )
 
 type Parser interface {
@@ -81,29 +86,33 @@ func Parse(tokenItems *TokenItems) (Parser, error) {
 
 	item, pos := tokenItems.TopAndOr()
 
-	// log.Println("pos", pos)
+	log.Println("pos", pos)
 	if pos == -1 {
 		return Simple(tokenItems)
 	}
 
 	if item.t == _AND {
-		// log.Println("into _And")
-		left, err := Parse(NewTokenItems(tokenItems.items[:pos]))
+		log.Println("into _And")
+		if tokenItems.baseQT == MUSTNOT {
+			return nil, ErrQueryTypeConflict
+		}
+
+		left, err := Parse(NewTokenItems(tokenItems.items[:pos], MUST))
 		if err != nil {
 			return nil, err
 		}
-		right, err := Parse(NewTokenItems(tokenItems.items[pos+1:]))
+		right, err := Parse(NewTokenItems(tokenItems.items[pos+1:], MUST))
 		if err != nil {
 			return nil, err
 		}
 		return &AND{left: left, right: right}, nil
 	} else {
-		// log.Println("into _OR")
-		left, err := Parse(NewTokenItems(tokenItems.items[:pos]))
+		log.Println("into _OR", tokenItems.baseQT)
+		left, err := Parse(NewTokenItems(tokenItems.items[:pos], tokenItems.baseQT))
 		if err != nil {
 			return nil, err
 		}
-		right, err := Parse(NewTokenItems(tokenItems.items[pos+1:]))
+		right, err := Parse(NewTokenItems(tokenItems.items[pos+1:], tokenItems.baseQT))
 		if err != nil {
 			return nil, err
 		}
@@ -136,8 +145,8 @@ func Simple(ts *TokenItems) (Parser, error) {
 					parens++
 				case _CLOSE_PAREN:
 					if parens == 0 {
-						// log.Println("start:", start, "end:", ts.current)
-						parser, err = Parse(NewTokenItems(ts.items[start:ts.current]))
+						log.Println("start:", start, "end:", ts.current, "baseQT", ts.baseQT)
+						parser, err = Parse(NewTokenItems(ts.items[start:ts.current], ts.baseQT))
 						if err != nil {
 							return nil, err
 						}
@@ -226,35 +235,45 @@ func Simple(ts *TokenItems) (Parser, error) {
 			if len(ret) > 0 {
 				last := ret[len(ret)-1]
 				if attr, ok := last.(*Attribute); ok {
-					attr.right = &Raw{text: item.value}
+					attr.right = &Raw{qt: ts.baseQT, text: item.value}
 					break
 				}
 			}
-			ret = append(ret, &Raw{text: item.value})
+			ret = append(ret, &Raw{qt: ts.baseQT, text: item.value})
 
 		case _TEXT:
 			// log.Println("into text", item.value)
 			if len(ret) > 0 {
 				last := ret[len(ret)-1]
 				if attr, ok := last.(*Attribute); ok {
-					attr.right = &Text{text: item.value}
+					attr.right = &Text{qt: ts.baseQT, text: item.value}
 					break
 				}
 			}
-			ret = append(ret, &Text{text: item.value})
+			ret = append(ret, &Text{qt: ts.baseQT, text: item.value})
 
 		case _PLUS:
+			if ts.baseQT < 0 {
+				return nil, ErrQueryTypeConflict
+			}
+
 			for ts.hasNext() {
 				next := ts.next()
 
 				switch next.t {
 				case _RAW:
 					ret = append(ret, &Raw{qt: MUST, text: next.value})
+
 				case _TEXT:
 					ret = append(ret, &Text{qt: MUST, text: next.value})
 				}
 			}
 		case _SUB:
+			log.Println("baseQT", ts.baseQT)
+			if ts.baseQT > 0 {
+				return nil, ErrQueryTypeConflict
+			}
+
 			for ts.hasNext() {
 				next := ts.next()
 

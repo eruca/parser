@@ -87,10 +87,11 @@ type TokenItem struct {
 type TokenItems struct {
 	items   []*TokenItem
 	current int
+	baseQT  QueryType
 }
 
-func NewTokenItems(items []*TokenItem) *TokenItems {
-	return &TokenItems{items: items, current: -1}
+func NewTokenItems(items []*TokenItem, base QueryType) *TokenItems {
+	return &TokenItems{items: items, current: -1, baseQT: base}
 }
 
 func (tis *TokenItems) hasNext() bool {
@@ -303,5 +304,5 @@ func Tokenizer(query string) (*TokenItems, error) {
 		}
 	}
 
-	return NewTokenItems(items), nil
+	return NewTokenItems(items, SHOULD), nil
 }
