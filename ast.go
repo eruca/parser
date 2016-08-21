@@ -223,8 +223,34 @@ func Simple(ts *TokenItems) (Parser, error) {
 			if len(ret) == 0 {
 				return nil, errors.New("错误语法，不能以:开头")
 			}
-			ret[len(ret)-1] = &Attribute{
-				left: ret[len(ret)-1],
+
+			if ts.baseQT == MUST {
+				if raw, ok := ret[len(ret)-1].(*Raw); ok {
+					if raw.qt >= 0 {
+						ret[len(ret)-1] = &Attribute{left: ret[len(ret)-1], qt: MUST}
+					}
+				} else if text, ok := ret[len(ret)-1].(*Text); ok {
+					if text.qt >= 0 {
+						ret[len(ret)-1] = &Attribute{left: ret[len(ret)-1], qt: MUST}
+					}
+				}
+
+			} else if ts.baseQT == MUSTNOT {
+				if raw, ok := ret[len(ret)-1].(*Raw); ok {
+					if raw.qt <= 0 {
+						ret[len(ret)-1] = &Attribute{left: ret[len(ret)-1], qt: MUSTNOT}
+					}
+				} else if text, ok := ret[len(ret)-1].(*Text); ok {
+					if text.qt <= 0 {
+						ret[len(ret)-1] = &Attribute{left: ret[len(ret)-1], qt: MUSTNOT}
+					}
+				}
+			} else {
+				if raw, ok := ret[len(ret)-1].(*Raw); ok {
+					ret[len(ret)-1] = &Attribute{left: raw, qt: raw.qt}
+				} else if text, ok := ret[len(ret)-1].(*Text); ok {
+					ret[len(ret)-1] = &Attribute{left: text, qt: text.qt}
+				}
 			}
 
 		case _CLOSE_PAREN:
@@ -235,7 +261,7 @@ func Simple(ts *TokenItems) (Parser, error) {
 			if len(ret) > 0 {
 				last := ret[len(ret)-1]
 				if attr, ok := last.(*Attribute); ok {
-					attr.right = &Raw{qt: ts.baseQT, text: item.value}
+					attr.right = &Raw{qt: attr.qt, text: item.value}
 					break
 				}
 			}
@@ -246,7 +272,7 @@ func Simple(ts *TokenItems) (Parser, error) {
 			if len(ret) > 0 {
 				last := ret[len(ret)-1]
 				if attr, ok := last.(*Attribute); ok {
-					attr.right = &Text{qt: ts.baseQT, text: item.value}
+					attr.right = &Text{qt: attr.qt, text: item.value}
 					break
 				}
 			}
@@ -257,32 +283,43 @@ func Simple(ts *TokenItems) (Parser, error) {
 				return nil, ErrQueryTypeConflict
 			}
 
+		LOOP_PLUS:
 			for ts.hasNext() {
-				next := ts.next()
+				next, _ := ts.peek(1)
 
+				log.Println(next.t, next.value)
 				switch next.t {
 				case _RAW:
 					ret = append(ret, &Raw{qt: MUST, text: next.value})
-
 				case _TEXT:
 					ret = append(ret, &Text{qt: MUST, text: next.value})
+
+				case _EMPTYSPACE, _COLON:
+					break LOOP_PLUS
 				}
+				ts.next()
 			}
+
 		case _SUB:
 			log.Println("baseQT", ts.baseQT)
 			if ts.baseQT > 0 {
 				return nil, ErrQueryTypeConflict
 			}
 
+		LOOP_SUB:
 			for ts.hasNext() {
-				next := ts.next()
+				next, _ := ts.peek(1)
 
 				switch next.t {
 				case _RAW:
 					ret = append(ret, &Raw{qt: MUSTNOT, text: next.value})
 				case _TEXT:
 					ret = append(ret, &Text{qt: MUSTNOT, text: next.value})
+
+				case _EMPTYSPACE, _COLON:
+					break LOOP_SUB
 				}
+				ts.next()
 			}
 
 		case _EMPTYSPACE:
@@ -343,6 +380,7 @@ func (ps Parsers) Parse() Groups {
 
 // 属性
 type Attribute struct {
+	qt    QueryType
 	left  Parser
 	right Parser
 }

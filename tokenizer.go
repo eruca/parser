@@ -36,6 +36,26 @@ func (t Type) String() string {
 		return "["
 	case _CLOSE_BRACK:
 		return "]"
+	case _OPEN_BRACE:
+		return "{"
+	case _CLOSE_BRACE:
+		return "}"
+	case _OR:
+		return "||"
+	case _AND:
+		return "&&"
+	case _COLON:
+		return ":"
+	case _SLASH:
+		return "\\"
+	case _PLUS:
+		return "+"
+	case _SUB:
+		return "-"
+	case _EMPTYSPACE:
+		return " "
+	case _RAW:
+		return "RAW"
 	}
 
 	return ""

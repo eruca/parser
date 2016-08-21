@@ -27,7 +27,7 @@ func TestTokenizer(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
-	text := "(A || B)  +Price:[10 ~ 20}"
+	text := "(A || B)  +Price:[10 ~ 20} -title:NoOne"
 
 	log.Println("text:", text)
 	tokenItems, err := Tokenizer(text)
