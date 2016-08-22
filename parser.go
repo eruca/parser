@@ -1,4 +1,4 @@
-package parser
+package parser2
 
 type QueryType int
 
@@ -10,14 +10,27 @@ const (
 
 type QueryItem struct {
 	QT        QueryType
-	Attribute string // 属性值
-	Text      string
-	IsRange   bool
+	Attribute string
+	Value     string
+	isRange   bool
 	Offset    bool
 }
 
-type Group struct {
-	items []*QueryItem
+func (item *QueryItem) IsRange() bool {
+	return item.isRange
 }
 
-type Groups []*Group
+func (item *QueryItem) Start() (value string, isEqual bool) {
+	// todo
+	return "", false
+}
+
+func (item *QueryItem) End() (value string, isEqual bool) {
+	// todo
+	return
+}
+
+type Group struct {
+	QT    QueryType
+	Items []QueryItem
+}

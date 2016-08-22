@@ -1,4 +1,4 @@
-package parser
+package parser2
 
 import (
 	"errors"
@@ -14,69 +14,74 @@ var (
 type Parser interface {
 	Len() int
 	String() string
-	Parse() Groups
+	Qt() QueryType
+	SetQt(qt QueryType)
+	Parse() ([]Group, error)
 }
 
-func recur_split(parser Parser) Parsers {
-	res := Parsers{}
+// Parsers 集合
+type Parsers struct {
+	QT    QueryType
+	Items []Parser
+}
 
-	if ps, ok := parser.(Parsers); ok {
-		for _, p := range ps {
-			ps_child := recur_split(p)
-			res = append(res, ps_child...)
-		}
-	} else {
-		res = append(res, parser)
+func (ps *Parsers) Len() int {
+	return len(ps.Items)
+}
+
+func (ps *Parsers) String() string {
+	result := make([]string, len(ps.Items))
+
+	for i := 0; i < len(ps.Items); i++ {
+		result[i] = ps.Items[i].String()
 	}
 
-	return res
+	return strings.Join(result, " ")
 }
 
-func recur_count_or(parser Parser) int {
-	sum := 1
-	if ps, ok := parser.(Parsers); ok {
-		for _, p := range ps {
-			if p.Len() > 0 {
-				num := recur_count_or(p)
-				if num > 0 {
-					sum *= num
-				}
+func (ps *Parsers) Qt() QueryType {
+	return ps.QT
+}
+
+func (ps *Parsers) SetQt(qt QueryType) {
+	ps.QT = qt
+}
+
+func (ps *Parsers) Parse() ([]Group, error) {
+	groups := make([][]Group, 0, len(ps.Items))
+	for _, p := range ps.Items {
+		if p.Len() > 0 {
+			qt, err := calcQueryType(ps.QT, SHOULD, p.Qt())
+			if err != nil {
+				return nil, err
 			}
+			p.SetQt(qt)
+			group, err := p.Parse()
+			if err != nil {
+				return nil, err
+			}
+			groups = append(groups, group)
 		}
-
-		if sum == 1 {
-			return 0
-		}
-		return sum
+	}
+	if len(groups) == 1 {
+		return groups[0], nil
 	}
 
-	switch parser.(type) {
-	case *OR:
-		or := parser.(*OR)
-		left := recur_count_or(or.left)
-		right := recur_count_or(or.right)
-
-		if left+right == 0 {
-			return 2
-		}
-
-		return left + right + 1
-	case *AND:
-		and := parser.(*AND)
-		left := recur_count_or(and.left)
-		right := recur_count_or(and.right)
-
-		if left == 0 {
-			return right
-		}
-
-		if right == 0 {
-			return left
-		}
-
-		return left * right
+	cnt := 1
+	for _, group := range groups {
+		cnt *= len(group)
 	}
-	return 0
+	ret := make([]Group, cnt)
+
+	index := 0
+	for _, group := range groups {
+		for i := 0; i < cnt; i++ {
+			index = i % len(group)
+			ret[i].Items = append(ret[i].Items, group[index].Items...)
+		}
+	}
+
+	return ret, nil
 }
 
 func Parse(tokenItems *TokenItems) (Parser, error) {
@@ -85,14 +90,13 @@ func Parse(tokenItems *TokenItems) (Parser, error) {
 	}
 
 	item, pos := tokenItems.TopAndOr()
-
-	log.Println("pos", pos)
+	log.Println("pos:", pos)
 	if pos == -1 {
-		return Simple(tokenItems)
+		return simple(tokenItems)
 	}
 
 	if item.t == _AND {
-		log.Println("into _And")
+		log.Println("_AND")
 		if tokenItems.baseQT == MUSTNOT {
 			return nil, ErrQueryTypeConflict
 		}
@@ -101,29 +105,35 @@ func Parse(tokenItems *TokenItems) (Parser, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		right, err := Parse(NewTokenItems(tokenItems.items[pos+1:], MUST))
 		if err != nil {
 			return nil, err
 		}
-		return &AND{left: left, right: right}, nil
+		return &And{left: left, right: right}, nil
 	} else {
-		log.Println("into _OR", tokenItems.baseQT)
+		// 因为是OR,所以就以父的QueryType决定
+		log.Println("_OR")
 		left, err := Parse(NewTokenItems(tokenItems.items[:pos], tokenItems.baseQT))
 		if err != nil {
 			return nil, err
 		}
+		log.Println("Or left:", left.String())
+
 		right, err := Parse(NewTokenItems(tokenItems.items[pos+1:], tokenItems.baseQT))
 		if err != nil {
 			return nil, err
 		}
-		return &OR{left: left, right: right, index: item.index}, nil
+
+		log.Println("Or right:", right.String())
+
+		return &Or{left: left, right: right /*, index: item.index*/}, nil
 	}
 
 	return nil, nil
 }
 
-// 没有or and
-func Simple(ts *TokenItems) (Parser, error) {
+func simple(ts *TokenItems) (Parser, error) {
 	ret := Parsers{}
 
 	start, parens := 0, 0
@@ -133,10 +143,12 @@ func Simple(ts *TokenItems) (Parser, error) {
 		switch item.t {
 		case _OPEN_PAREN:
 			start = ts.current + 1
-			var parser Parser
-			var err error
+			var (
+				parser Parser
+				err    error
+			)
 
-		INNER:
+		LOOP_OPEN_PAREN:
 			for ts.hasNext() {
 				next := ts.next()
 
@@ -145,373 +157,150 @@ func Simple(ts *TokenItems) (Parser, error) {
 					parens++
 				case _CLOSE_PAREN:
 					if parens == 0 {
-						log.Println("start:", start, "end:", ts.current, "baseQT", ts.baseQT)
 						parser, err = Parse(NewTokenItems(ts.items[start:ts.current], ts.baseQT))
 						if err != nil {
 							return nil, err
 						}
+						log.Println("start:", start, "end:", ts.current, "baseQT", ts.baseQT,
+							"return qt", parser.Qt())
 
-						break INNER
+						break LOOP_OPEN_PAREN
 					} else {
 						parens--
 					}
 				}
 			}
+			err = prevAttribute(&ret, ts.baseQT, parser)
+			if err != nil {
+				return nil, err
+			}
+			log.Println("after attr", parser.Qt())
 
-			if len(ret) > 0 {
-				last := ret[len(ret)-1]
+		// { [
+		case _OPEN_BRACK, _OPEN_BRACE:
+			value := make([]string, 1, 5)
+
+			if item.t == _OPEN_BRACE {
+				value[0] = "{"
+			} else {
+				value[0] = "["
+			}
+
+		LOOP_OPEN_BRACK:
+			for ts.hasNext() {
+				next := ts.next()
+
+				switch next.t {
+				case _EMPTYSPACE:
+					continue
+
+				case _CLOSE_BRACK:
+					value = append(value, "]")
+					break LOOP_OPEN_BRACK
+
+				case _CLOSE_BRACE:
+					value = append(value, "}")
+					break LOOP_OPEN_BRACK
+
+				default:
+					value = append(value, next.value)
+				}
+			}
+
+			// log.Println("ret.Len():", ret.Len(), "value:", strings.Join(value, ""))
+			if ret.Len() > 0 {
+				last := ret.Items[ret.Len()-1]
 				if attr, ok := last.(*Attribute); ok {
-					attr.right = parser
-					break
-				}
-			}
-			ret = append(ret, parser)
-
-		case _OPEN_BRACK:
-			value := "["
-
-		LOOP1:
-			for ts.hasNext() {
-				next := ts.next()
-				if next.t == _EMPTYSPACE {
+					qt, err := calcQueryType(ts.baseQT, attr.qt, SHOULD)
+					if err != nil {
+						return nil, err
+					}
+					last.(*Attribute).right = &Range{qt: qt, text: strings.Join(value, "")}
 					continue
 				}
-
-				if next.t == _CLOSE_BRACK {
-					value += "]"
-					break LOOP1
-				}
-				if next.t == _CLOSE_BRACE {
-					value += "}"
-					break LOOP1
-				}
-
-				value += next.value
 			}
 
-			if attr, ok := ret[len(ret)-1].(*Attribute); ok {
-				attr.right = &Range{text: value}
-			}
-
-		case _OPEN_BRACE:
-			value := "{"
-
-		LOOP2:
-			for ts.hasNext() {
-				next := ts.next()
-				if next.t == _EMPTYSPACE {
-					continue
-				}
-
-				if next.t == _CLOSE_BRACK {
-					value += "]"
-					break LOOP2
-				}
-				if next.t == _CLOSE_BRACE {
-					value += "}"
-					break LOOP2
-				}
-
-				value += next.value
-			}
-
-			if attr, ok := ret[len(ret)-1].(*Attribute); ok {
-				attr.right = &Range{text: value}
-			}
+			return nil, fmt.Errorf("以[]{}定义一个范围查询: price:[2~3],but %s", strings.Join(value, ""))
 
 		case _COLON:
-			if len(ret) == 0 {
-				return nil, errors.New("错误语法，不能以:开头")
+			if len(ret.Items) == 0 {
+				return nil, errors.New("price:[1~2] 不能以:开头,只能表示属性或以转义符'\\'开始")
 			}
 
-			if ts.baseQT == MUST {
-				if raw, ok := ret[len(ret)-1].(*Raw); ok {
-					if raw.qt >= 0 {
-						ret[len(ret)-1] = &Attribute{left: ret[len(ret)-1], qt: MUST}
-					}
-				} else if text, ok := ret[len(ret)-1].(*Text); ok {
-					if text.qt >= 0 {
-						ret[len(ret)-1] = &Attribute{left: ret[len(ret)-1], qt: MUST}
-					}
+			var (
+				qt  QueryType
+				err error
+			)
+
+			last := ret.Items[len(ret.Items)-1]
+			switch last.(type) {
+			case *Raw, *Text:
+				log.Println("last qt", last.Qt())
+				qt, err = calcQueryType(ts.baseQT, last.Qt(), SHOULD)
+				if err != nil {
+					return nil, err
 				}
 
-			} else if ts.baseQT == MUSTNOT {
-				if raw, ok := ret[len(ret)-1].(*Raw); ok {
-					if raw.qt <= 0 {
-						ret[len(ret)-1] = &Attribute{left: ret[len(ret)-1], qt: MUSTNOT}
-					}
-				} else if text, ok := ret[len(ret)-1].(*Text); ok {
-					if text.qt <= 0 {
-						ret[len(ret)-1] = &Attribute{left: ret[len(ret)-1], qt: MUSTNOT}
-					}
-				}
-			} else {
-				if raw, ok := ret[len(ret)-1].(*Raw); ok {
-					ret[len(ret)-1] = &Attribute{left: raw, qt: raw.qt}
-				} else if text, ok := ret[len(ret)-1].(*Text); ok {
-					ret[len(ret)-1] = &Attribute{left: text, qt: text.qt}
-				}
+			default:
+				return nil, errors.New(":前面不能以字符以外的其他")
 			}
+
+			ret.Items[len(ret.Items)-1] = &Attribute{left: last, qt: qt}
 
 		case _CLOSE_PAREN:
 			panic("never happen")
+
 		case _RAW:
-			// log.Println("into raw", item.value)
-			// ret = append(ret, &Raw{text: item.value})
-			if len(ret) > 0 {
-				last := ret[len(ret)-1]
-				if attr, ok := last.(*Attribute); ok {
-					attr.right = &Raw{qt: attr.qt, text: item.value}
-					break
-				}
+			log.Println("into _RAW --", item.value)
+			err := prevAttribute(&ret, ts.baseQT, &Raw{qt: SHOULD, text: item.value})
+			if err != nil {
+				return nil, err
 			}
-			ret = append(ret, &Raw{qt: ts.baseQT, text: item.value})
 
 		case _TEXT:
-			// log.Println("into text", item.value)
-			if len(ret) > 0 {
-				last := ret[len(ret)-1]
-				if attr, ok := last.(*Attribute); ok {
-					attr.right = &Text{qt: attr.qt, text: item.value}
-					break
+			log.Println("into _TEXT --", item.value)
+			err := prevAttribute(&ret, ts.baseQT, &Text{qt: SHOULD, text: item.value})
+			if err != nil {
+				return nil, err
+			}
+
+		case _PLUS, _SUB:
+			var qt QueryType
+
+			if item.t == _PLUS {
+				qt = MUST
+				if ts.baseQT == MUSTNOT {
+					return nil, ErrQueryTypeConflict
+				}
+			} else {
+				qt = MUSTNOT
+				if ts.baseQT == MUST {
+					return nil, ErrQueryTypeConflict
 				}
 			}
-			ret = append(ret, &Text{qt: ts.baseQT, text: item.value})
 
-		case _PLUS:
-			if ts.baseQT < 0 {
-				return nil, ErrQueryTypeConflict
-			}
-
-		LOOP_PLUS:
-			for ts.hasNext() {
-				next, _ := ts.peek(1)
-
-				log.Println(next.t, next.value)
-				switch next.t {
-				case _RAW:
-					ret = append(ret, &Raw{qt: MUST, text: next.value})
-				case _TEXT:
-					ret = append(ret, &Text{qt: MUST, text: next.value})
-
-				case _EMPTYSPACE, _COLON:
-					break LOOP_PLUS
-				}
-				ts.next()
-			}
-
-		case _SUB:
-			log.Println("baseQT", ts.baseQT)
-			if ts.baseQT > 0 {
-				return nil, ErrQueryTypeConflict
-			}
-
-		LOOP_SUB:
+		LOOP_PLUS_SUB:
 			for ts.hasNext() {
 				next, _ := ts.peek(1)
 
 				switch next.t {
 				case _RAW:
-					ret = append(ret, &Raw{qt: MUSTNOT, text: next.value})
+					ret.Items = append(ret.Items, &Raw{qt: qt, text: next.value})
 				case _TEXT:
-					ret = append(ret, &Text{qt: MUSTNOT, text: next.value})
+					ret.Items = append(ret.Items, &Text{qt: qt, text: next.value})
 
 				case _EMPTYSPACE, _COLON:
-					break LOOP_SUB
+					break LOOP_PLUS_SUB
+
+				default:
+					return nil, errors.New("+(-)后面只能是字符或带引号字符, +(-)A +(-)\"AB\" +(-)price:[1~2]")
 				}
 				ts.next()
 			}
-
 		case _EMPTYSPACE:
-			ret = append(ret, Sep(0))
+			ret.Items = append(ret.Items, Sep(0))
 		}
 	}
 
-	return ret, nil
+	return &ret, nil
 }
-
-// 集合
-type Parsers []Parser
-
-func (p Parsers) Len() int {
-	return len(p)
-}
-
-func (p Parsers) String() string {
-	result := make([]string, len(p))
-
-	for i := 0; i < len(p); i++ {
-		result[i] = p[i].String()
-	}
-
-	return strings.Join(result, " ")
-}
-
-func (ps Parsers) Parse() Groups {
-	groups := make([]Groups, 0, len(ps))
-	for _, p := range ps {
-		if p.Len() > 0 {
-			groups = append(groups, p.Parse())
-		}
-	}
-	if len(groups) == 1 {
-		return groups[0]
-	}
-
-	cnt := 1
-	for _, gs := range groups {
-		cnt *= len(gs)
-	}
-
-	ret := make(Groups, cnt)
-
-	for i := 0; i < cnt; i++ {
-		ret[i] = &Group{}
-	}
-
-	for _, gs := range groups {
-		for i := 0; i < cnt; i++ {
-			index := i % len(gs)
-			ret[i].items = append(ret[i].items, gs[index].items...)
-		}
-	}
-	return ret
-}
-
-// 属性
-type Attribute struct {
-	qt    QueryType
-	left  Parser
-	right Parser
-}
-
-func (a *Attribute) Len() int {
-	return a.right.Len()
-}
-
-func (a *Attribute) String() string {
-	return fmt.Sprintf("%s : %s", a.left, a.right)
-}
-
-func (a *Attribute) Parse() Groups {
-	groups := a.right.Parse()
-
-	for _, group := range groups {
-		for _, item := range group.items {
-			item.Attribute = a.left.String()
-		}
-	}
-
-	return groups
-}
-
-// 代表 左右两个都必须有
-type AND struct {
-	left  Parser
-	right Parser
-}
-
-func (and *AND) Len() int {
-	return 2
-}
-
-func (and *AND) String() string {
-	return fmt.Sprintf("%s && %s", and.left, and.right)
-}
-
-func (and *AND) Parse() Groups {
-	ps := Parsers{and.left, and.right}
-
-	return ps.Parse()
-}
-
-// 代表 或者
-type OR struct {
-	left  Parser
-	right Parser
-	index int
-}
-
-func (or *OR) Len() int {
-	return 1
-}
-
-func (or *OR) String() string {
-	return fmt.Sprintf("%s || %s", or.left, or.right)
-}
-
-func (or *OR) Parse() Groups {
-	leftGroup := or.left.Parse()
-	rightGroup := or.right.Parse()
-
-	ret := make(Groups, len(leftGroup)+len(rightGroup))
-
-	copy(ret, leftGroup)
-	copy(ret[len(leftGroup):], rightGroup)
-	return ret
-}
-
-type Range struct {
-	text string
-}
-
-func (r *Range) Len() int {
-	return 1
-}
-
-func (r *Range) String() string {
-	return r.text
-}
-
-func (r *Range) Parse() Groups {
-	return Groups{&Group{items: []*QueryItem{&QueryItem{QT: MUST, Text: r.text, IsRange: true}}}}
-}
-
-// Text 代表以""包饶的
-type Text struct {
-	qt   QueryType
-	text string
-}
-
-func (t *Text) Len() int {
-	return 1
-}
-
-func (t *Text) String() string {
-	return t.text
-}
-
-func (t *Text) Parse() Groups {
-	return Groups{&Group{items: []*QueryItem{&QueryItem{QT: t.qt, Text: t.text, Offset: true}}}}
-}
-
-// Raw 代表 毫无修饰的词项
-type Raw struct {
-	qt   QueryType
-	text string
-}
-
-func (r *Raw) Len() int {
-	return 1
-}
-
-func (r *Raw) String() string {
-	return r.text
-}
-
-func (r *Raw) Parse() Groups {
-	return Groups{&Group{items: []*QueryItem{&QueryItem{QT: r.qt, Text: r.text}}}}
-}
-
-// 作为分隔作用
-type Sep int8
-
-func (s Sep) Len() int {
-	return 0
-}
-
-func (s Sep) String() string {
-	return " "
-}
-
-func (s Sep) Parse() Groups { return nil }

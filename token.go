@@ -1,4 +1,4 @@
-package parser
+package parser2
 
 import (
 	"errors"
@@ -194,28 +194,9 @@ func Tokenizer(query string) (*TokenItems, error) {
 			}
 		}
 		if len(value) > 0 {
-			items = append(items, &TokenItem{t: _EMPTYSPACE, value: string(value)})
+			items = append(items, &TokenItem{t: _EMPTYSPACE})
 			continue
 		}
-
-		// if re_number.MatchString(string(char)) {
-		// 	var r rune
-		// 	for tokens.hasNext() {
-		// 		r, _ = tokens.peek(1)
-
-		// 		if re_number.MatchString(string(r)) {
-		// 			value = append(value, r)
-
-		// 			tokens.next()
-		// 		} else {
-		// 			break
-		// 		}
-		// 	}
-		// }
-		// if len(value) > 0 {
-		// 	items = append(items, &TokenItem{t: _NUMBER, value: string(value)})
-		// 	continue
-		// }
 
 		switch char {
 		case '(':
@@ -236,6 +217,30 @@ func Tokenizer(query string) (*TokenItems, error) {
 			items = append(items, &TokenItem{t: _SUB})
 		case ':':
 			items = append(items, &TokenItem{t: _COLON})
+		case '\\':
+			if r, err := tokens.peek(1); err != nil {
+				return nil, errors.New("不能以 '\\'结尾")
+			} else {
+				if re_keyword.MatchString(string(r)) {
+					value = append(value, r)
+					tokens.next()
+
+					for tokens.hasNext() {
+						r, _ = tokens.peek(1)
+						if !re_keyword.MatchString(string(r)) {
+							value = append(value, r)
+							tokens.next()
+						} else {
+							break
+						}
+					}
+
+					items = append(items, &TokenItem{t: _RAW, value: string(value)})
+				} else {
+					return nil, errors.New(string(r) + "不能以\\转义")
+				}
+			}
+
 		case '|':
 			if r, err := tokens.peek(1); err == nil {
 				if r == '|' {
@@ -283,27 +288,6 @@ func Tokenizer(query string) (*TokenItems, error) {
 				return nil, ErrNoMatchDoubleQuota
 			}
 			items = append(items, &TokenItem{t: _TEXT, value: string(value)})
-
-		case '\\':
-			value = append(value, char)
-
-			var r rune
-			if tokens.hasNext() {
-				value = append(value, tokens.next())
-			}
-
-			for tokens.hasNext() {
-				r, _ = tokens.peek(1)
-
-				if !re_keyword.MatchString(string(r)) {
-					value = append(value, r)
-					tokens.next()
-				} else {
-					break
-				}
-			}
-
-			items = append(items, &TokenItem{t: _RAW, value: string(value)})
 
 		default:
 			value = append(value, char)
