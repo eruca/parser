@@ -54,6 +54,23 @@ func TestParse(t *testing.T) {
 	p.Parse()
 }
 
+func TestPlus(t *testing.T) {
+	query := "+(A || B)"
+
+	log.Println(query)
+
+	tis, err := Tokenizer(query)
+	assert.NoError(t, err)
+
+	p, err := Parse(tis)
+	assert.NoError(t, err)
+
+	groups, err := p.Parse()
+	assert.NoError(t, err)
+
+	printGroup(groups)
+}
+
 func TestParse2(t *testing.T) {
 	text := "(A || B) -C +title:(D E) F "
 	log.Println(text)

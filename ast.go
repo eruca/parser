@@ -133,43 +133,86 @@ func Parse(tokenItems *TokenItems) (Parser, error) {
 	return nil, nil
 }
 
+func parentheres(ts *TokenItems, attrQt QueryType) (parser Parser, err error) {
+	start, parens := ts.current+1, 0
+
+LOOP:
+	for ts.hasNext() {
+		next := ts.next()
+		log.Println("next.t in ()", next.t)
+
+		switch next.t {
+		case _OPEN_PAREN:
+			parens++
+		case _CLOSE_PAREN:
+			log.Println("into )")
+			if parens == 0 {
+				qt, err := calcQueryType(ts.baseQT, attrQt, SHOULD)
+				if err != nil {
+					log.Println("() 1")
+					return nil, err
+				}
+				log.Println("start", start, "end", ts.current)
+				parser, err = Parse(NewTokenItems(ts.items[start:ts.current], qt))
+				if err != nil {
+					log.Println("() 2")
+					return nil, err
+				}
+
+				log.Println(2, parser.String(), err)
+				break LOOP
+			} else {
+				parens--
+			}
+		}
+	}
+
+	log.Println(parser == nil, err)
+	return
+}
+
 func simple(ts *TokenItems) (Parser, error) {
 	ret := Parsers{}
 
-	start, parens := 0, 0
+	// start, parens := 0, 0
 	for ts.hasNext() {
 		item := ts.next()
 
 		switch item.t {
 		case _OPEN_PAREN:
-			start = ts.current + 1
-			var (
-				parser Parser
-				err    error
-			)
+			// start = ts.current + 1
+			// var (
+			// 	parser Parser
+			// 	err    error
+			// )
 
-		LOOP_OPEN_PAREN:
-			for ts.hasNext() {
-				next := ts.next()
+			// LOOP_OPEN_PAREN:
+			// 	for ts.hasNext() {
+			// 		next := ts.next()
 
-				switch next.t {
-				case _OPEN_PAREN:
-					parens++
-				case _CLOSE_PAREN:
-					if parens == 0 {
-						parser, err = Parse(NewTokenItems(ts.items[start:ts.current], ts.baseQT))
-						if err != nil {
-							return nil, err
-						}
-						log.Println("start:", start, "end:", ts.current, "baseQT", ts.baseQT,
-							"return qt", parser.Qt())
+			// 		switch next.t {
+			// 		case _OPEN_PAREN:
+			// 			parens++
+			// 		case _CLOSE_PAREN:
+			// 			if parens == 0 {
+			// 				parser, err = Parse(NewTokenItems(ts.items[start:ts.current], ts.baseQT))
+			// 				if err != nil {
+			// 					return nil, err
+			// 				}
+			// 				log.Println("start:", start, "end:", ts.current, "baseQT", ts.baseQT,
+			// 					"return qt", parser.Qt())
 
-						break LOOP_OPEN_PAREN
-					} else {
-						parens--
-					}
-				}
+			// 				break LOOP_OPEN_PAREN
+			// 			} else {
+			// 				parens--
+			// 			}
+			// 		}
+			// 	}
+			parser, err := parentheres(ts, SHOULD)
+			if err != nil {
+				return nil, err
 			}
+
 			err = prevAttribute(&ret, ts.baseQT, parser)
 			if err != nil {
 				return nil, err
@@ -288,6 +331,13 @@ func simple(ts *TokenItems) (Parser, error) {
 					ret.Items = append(ret.Items, &Raw{qt: qt, text: next.value})
 				case _TEXT:
 					ret.Items = append(ret.Items, &Text{qt: qt, text: next.value})
+
+				case _OPEN_PAREN:
+					parser, err := parentheres(ts, qt)
+					if err != nil {
+						return nil, err
+					}
+					ret.Items = append(ret.Items, parser)
 
 				case _EMPTYSPACE, _COLON:
 					break LOOP_PLUS_SUB
