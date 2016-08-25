@@ -1,9 +1,8 @@
-package parser2
+package parser
 
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -90,13 +89,11 @@ func Parse(tokenItems *TokenItems) (Parser, error) {
 	}
 
 	item, pos := tokenItems.TopAndOr()
-	log.Println("pos:", pos)
 	if pos == -1 {
 		return simple(tokenItems)
 	}
 
 	if item.t == _AND {
-		log.Println("_AND")
 		if tokenItems.baseQT == MUSTNOT {
 			return nil, ErrQueryTypeConflict
 		}
@@ -113,101 +110,66 @@ func Parse(tokenItems *TokenItems) (Parser, error) {
 		return &And{left: left, right: right}, nil
 	} else {
 		// 因为是OR,所以就以父的QueryType决定
-		log.Println("_OR")
 		left, err := Parse(NewTokenItems(tokenItems.items[:pos], tokenItems.baseQT))
 		if err != nil {
 			return nil, err
 		}
-		log.Println("Or left:", left.String())
 
 		right, err := Parse(NewTokenItems(tokenItems.items[pos+1:], tokenItems.baseQT))
 		if err != nil {
 			return nil, err
 		}
 
-		log.Println("Or right:", right.String())
-
-		return &Or{left: left, right: right /*, index: item.index*/}, nil
+		return &Or{left: left, right: right}, nil
 	}
 
 	return nil, nil
 }
 
 func parentheres(ts *TokenItems, attrQt QueryType) (parser Parser, err error) {
-	start, parens := ts.current+1, 0
+	start, parens := ts.current+1, 1
 
 LOOP:
 	for ts.hasNext() {
 		next := ts.next()
-		log.Println("next.t in ()", next.t)
 
 		switch next.t {
 		case _OPEN_PAREN:
 			parens++
 		case _CLOSE_PAREN:
-			log.Println("into )")
+			parens--
+
+			if parens < 0 {
+				return nil, errors.New("()不匹配")
+			}
+
 			if parens == 0 {
 				qt, err := calcQueryType(ts.baseQT, attrQt, SHOULD)
 				if err != nil {
-					log.Println("() 1")
 					return nil, err
 				}
-				log.Println("start", start, "end", ts.current)
+				// log.Println("start", start, "end", ts.current)
 				parser, err = Parse(NewTokenItems(ts.items[start:ts.current], qt))
 				if err != nil {
-					log.Println("() 2")
 					return nil, err
 				}
 
-				log.Println(2, parser.String(), err)
 				break LOOP
-			} else {
-				parens--
 			}
 		}
 	}
 
-	log.Println(parser == nil, err)
 	return
 }
 
 func simple(ts *TokenItems) (Parser, error) {
 	ret := Parsers{}
 
-	// start, parens := 0, 0
 	for ts.hasNext() {
 		item := ts.next()
 
 		switch item.t {
 		case _OPEN_PAREN:
-			// start = ts.current + 1
-			// var (
-			// 	parser Parser
-			// 	err    error
-			// )
-
-			// LOOP_OPEN_PAREN:
-			// 	for ts.hasNext() {
-			// 		next := ts.next()
-
-			// 		switch next.t {
-			// 		case _OPEN_PAREN:
-			// 			parens++
-			// 		case _CLOSE_PAREN:
-			// 			if parens == 0 {
-			// 				parser, err = Parse(NewTokenItems(ts.items[start:ts.current], ts.baseQT))
-			// 				if err != nil {
-			// 					return nil, err
-			// 				}
-			// 				log.Println("start:", start, "end:", ts.current, "baseQT", ts.baseQT,
-			// 					"return qt", parser.Qt())
-
-			// 				break LOOP_OPEN_PAREN
-			// 			} else {
-			// 				parens--
-			// 			}
-			// 		}
-			// 	}
 			parser, err := parentheres(ts, SHOULD)
 			if err != nil {
 				return nil, err
@@ -217,7 +179,6 @@ func simple(ts *TokenItems) (Parser, error) {
 			if err != nil {
 				return nil, err
 			}
-			log.Println("after attr", parser.Qt())
 
 		// { [
 		case _OPEN_BRACK, _OPEN_BRACE:
@@ -250,7 +211,6 @@ func simple(ts *TokenItems) (Parser, error) {
 				}
 			}
 
-			// log.Println("ret.Len():", ret.Len(), "value:", strings.Join(value, ""))
 			if ret.Len() > 0 {
 				last := ret.Items[ret.Len()-1]
 				if attr, ok := last.(*Attribute); ok {
@@ -278,7 +238,6 @@ func simple(ts *TokenItems) (Parser, error) {
 			last := ret.Items[len(ret.Items)-1]
 			switch last.(type) {
 			case *Raw, *Text:
-				log.Println("last qt", last.Qt())
 				qt, err = calcQueryType(ts.baseQT, last.Qt(), SHOULD)
 				if err != nil {
 					return nil, err
@@ -294,14 +253,12 @@ func simple(ts *TokenItems) (Parser, error) {
 			panic("never happen")
 
 		case _RAW:
-			log.Println("into _RAW --", item.value)
 			err := prevAttribute(&ret, ts.baseQT, &Raw{qt: SHOULD, text: item.value})
 			if err != nil {
 				return nil, err
 			}
 
 		case _TEXT:
-			log.Println("into _TEXT --", item.value)
 			err := prevAttribute(&ret, ts.baseQT, &Text{qt: SHOULD, text: item.value})
 			if err != nil {
 				return nil, err
@@ -328,11 +285,22 @@ func simple(ts *TokenItems) (Parser, error) {
 
 				switch next.t {
 				case _RAW:
-					ret.Items = append(ret.Items, &Raw{qt: qt, text: next.value})
+					err := prevAttribute(&ret, ts.baseQT, &Raw{qt: qt, text: next.value})
+					if err != nil {
+						return nil, err
+					}
+					ts.current++
+
 				case _TEXT:
-					ret.Items = append(ret.Items, &Text{qt: qt, text: next.value})
+					err := prevAttribute(&ret, ts.baseQT, &Text{qt: qt, text: next.value})
+					if err != nil {
+						return nil, err
+					}
+					ts.current++
 
 				case _OPEN_PAREN:
+					ts.current++
+
 					parser, err := parentheres(ts, qt)
 					if err != nil {
 						return nil, err
@@ -343,9 +311,8 @@ func simple(ts *TokenItems) (Parser, error) {
 					break LOOP_PLUS_SUB
 
 				default:
-					return nil, errors.New("+(-)后面只能是字符或带引号字符, +(-)A +(-)\"AB\" +(-)price:[1~2]")
+					return nil, errors.New("+(-)后面只能是字符或带引号字符或者(), +(-)A +(-)\"AB\" +(-)price:[1~2]")
 				}
-				ts.next()
 			}
 		case _EMPTYSPACE:
 			ret.Items = append(ret.Items, Sep(0))

@@ -1,4 +1,4 @@
-package parser2
+package parser
 
 import (
 	"log"
@@ -51,11 +51,14 @@ func TestParse(t *testing.T) {
 	p, err := Parse(tokenItems)
 	assert.NoError(t, err)
 
-	p.Parse()
+	groups, err := p.Parse()
+	assert.NoError(t, err)
+
+	printGroup(groups)
 }
 
 func TestPlus(t *testing.T) {
-	query := "+(A || B)"
+	query := "+(A || B) title:(yes-no BB)"
 
 	log.Println(query)
 
@@ -90,6 +93,9 @@ func printGroup(groups []Group) {
 		log.Println("group:", i)
 		for k, item := range groups[i].Items {
 			log.Printf("%d : %#v", k, item)
+			if item.IsRange() {
+				log.Println(item.Parse())
+			}
 		}
 	}
 }

@@ -1,6 +1,4 @@
-package parser2
-
-import "log"
+package parser
 
 // Seperator
 type Sep int8
@@ -69,15 +67,21 @@ func prevAttribute(ps *Parsers, baseQt QueryType, p Parser) error {
 		last := ps.Items[ps.Len()-1]
 		if attr, ok := last.(*Attribute); ok {
 			qt, err := calcQueryType(baseQt, attr.qt, p.Qt())
+			// log.Printf("baseQt: %d, attrQT: %d, p.Qt: %d, resultQt: %d\n", baseQt, attr.qt, p.Qt(), qt)
 			if err != nil {
 				return err
 			}
 
-			log.Println("prev Attribute:", baseQt, attr.qt, p.Qt(), qt)
 			p.SetQt(qt)
-			attr.right = p
 
-			log.Println("p.Qt()", p.Qt())
+			if attr.right == nil {
+				attr.right = p
+			} else {
+				newAttr := Attribute{qt: attr.qt, left: attr.left, right: p}
+				ps.Items = append(ps.Items, &newAttr)
+			}
+
+			// log.Println("p.Qt()", p.Qt())
 			return nil
 		}
 	}

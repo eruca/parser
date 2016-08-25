@@ -1,4 +1,4 @@
-package parser2
+package parser
 
 import (
 	"errors"
@@ -187,7 +187,7 @@ func Tokenizer(query string) (*TokenItems, error) {
 
 				if re_empty_space.MatchString(string(r)) {
 					value = append(value, r)
-					tokens.next()
+					tokens.current++
 				} else {
 					break
 				}
@@ -223,13 +223,13 @@ func Tokenizer(query string) (*TokenItems, error) {
 			} else {
 				if re_keyword.MatchString(string(r)) {
 					value = append(value, r)
-					tokens.next()
+					tokens.current++
 
 					for tokens.hasNext() {
 						r, _ = tokens.peek(1)
 						if !re_keyword.MatchString(string(r)) {
 							value = append(value, r)
-							tokens.next()
+							tokens.current++
 						} else {
 							break
 						}
@@ -247,7 +247,7 @@ func Tokenizer(query string) (*TokenItems, error) {
 					items = append(items, &TokenItem{t: _OR, index: cntOr})
 					cntOr++
 
-					tokens.next()
+					tokens.current++
 				} else {
 					items = append(items, &TokenItem{t: _RAW, value: string(char)})
 				}
@@ -257,7 +257,7 @@ func Tokenizer(query string) (*TokenItems, error) {
 			if r, err := tokens.peek(1); err == nil {
 				if r == '&' {
 					items = append(items, &TokenItem{t: _AND})
-					tokens.next()
+					tokens.current++
 				} else {
 					items = append(items, &TokenItem{t: _RAW, value: string(char)})
 				}
@@ -273,15 +273,15 @@ func Tokenizer(query string) (*TokenItems, error) {
 				if r == '"' {
 					if prevRune, err := tokens.peek(-1); err == nil && prevRune == '\\' {
 						value = append(value, '"')
-						tokens.next()
+						tokens.current++
 					} else {
 						hasMatchOne = true
-						tokens.next()
+						tokens.current++
 						break
 					}
 				} else {
 					value = append(value, r)
-					tokens.next()
+					tokens.current++
 				}
 			}
 			if !hasMatchOne {
@@ -298,7 +298,7 @@ func Tokenizer(query string) (*TokenItems, error) {
 
 				if !re_keyword.MatchString(string(r)) {
 					value = append(value, r)
-					tokens.next()
+					tokens.current++
 				} else {
 					break
 				}
